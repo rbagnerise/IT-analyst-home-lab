@@ -8,7 +8,7 @@ The lab replicates common infrastructure found in corporate networks and is used
 
 # Lab Architecture
 
-![SOC Lab Architecture](architecture/soc-home-lab-architecture.png)
+![SOC Lab Architecture]([architecture/soc-home-lab-architecture.png](https://github.com/enterprise-security-home-lab/IT-analyst-home-lab/blob/main/Home%20Lab%20Diagram.png?raw=true))
 
 ---
 
