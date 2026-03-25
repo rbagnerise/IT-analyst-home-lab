@@ -1,0 +1,42 @@
+=================================================================
+VM: SRV-DC01 (Domain Controller)
+=================================================================
+
+HARDWARE CONFIGURATION:
+- Memory: 6 GB
+- Processors: 2 cores
+- Hard Disk: 60 GB
+- Network: NAT
+- Location: D:\VMs\Infrastructure\SRV-DC01\
+
+OPERATING SYSTEM:
+- OS: Windows Server 2022 Standard Evaluation
+- Computer Name: SRV-DC01
+- IP Address: 192.168.147.133
+- Subnet Mask: 255.255.255.0
+- Gateway: 192.168.147.2
+
+ROLES INSTALLED:
+- Active Directory Domain Services
+- DNS Server
+- File and Storage Services
+
+DOMAIN CONFIGURATION:
+- Domain: lab.local
+- NetBIOS: LAB
+- Forest Functional Level: Windows Server 2016
+- Domain Functional Level: Windows Server 2016
+
+ORGANIZATIONAL UNITS:
+- IT_Staff
+- Soc_Analysts
+- HR_Department
+- Standard_Users
+
+NOTES:
+- Primary domain controller
+- DNS server for lab.local
+- Created: February 12, 2026
+- Evaluation license valid for 180 days
+
+=================================================================

@@ -1,0 +1,192 @@
+═══════════════════════════════════════════════════════════════════
+HOME LAB — NETWORK ARCHITECTURE v12
+Last Updated: March 23, 2026 | Phase 16 COMPLETE
+═══════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════
+PHYSICAL SETUP
+═══════════════════════════════════════════════════════════════════
+
+  Host Machine:         Dell Desktop (headless — no monitor required)
+  Connection:           Hardwired ethernet to Cox gateway
+  Dell Ethernet IP:     192.168.0.150 (permanent DHCP reservation)
+  Ethernet MAC:         54-BF-64-62-03-39
+  Remote Access:        ssh sshuser@192.168.0.150 from Lenovo laptop
+  Auto-Login:           raymond.bagnerise@gmail.com (raymo) via registry
+  Hypervisor:           VMware Workstation Pro 17
+  Total VMs:            7
+
+  Cox Gateway:          192.168.0.1 (home LAN)
+  Lenovo Laptop:        DHCP from Cox (used for SSH access only)
+  MacBook M1 Pro:       192.168.0.163 (Kali UTM VM — bridged Wi-Fi en0)
+
+═══════════════════════════════════════════════════════════════════
+VMWARE VIRTUAL NETWORK ADAPTERS (Dell Host)
+═══════════════════════════════════════════════════════════════════
+
+  VMnet1  (Host-Only):  192.168.242.1   — unused
+  VMnet8  (NAT):        192.168.147.1   — internet access for VMs
+  VMnet10 (Host-Only):  10.10.10.2      — Dell host reaches Servers zone
+                        Static IP set via netsh
+  VMnet19 (Host-Only):  10.10.30.2      — Dell host reaches DMZ zone
+                        Static IP set via netsh
+                        ⚠️ Resets on reboot — re-apply if lost:
+                        netsh interface ip set address "VMware Network Adapter VMnet19" static 10.10.30.2 255.255.255.0
+
+═══════════════════════════════════════════════════════════════════
+PORT FORWARDS (Dell Host — netsh portproxy — persistent)
+═══════════════════════════════════════════════════════════════════
+
+  Listen          Forward To              Purpose
+  ────────────    ──────────────────────  ─────────────────────────────
+  0.0.0.0:1514    10.10.10.135:1514       Wazuh agent traffic (MacBook)
+  0.0.0.0:1515    10.10.10.135:1515       Wazuh enrollment (MacBook)
+  0.0.0.0:8080    10.10.30.101:80         Metasploitable HTTP (MacBook Kali)
+
+═══════════════════════════════════════════════════════════════════
+NETWORK ZONES
+═══════════════════════════════════════════════════════════════════
+
+  Zone            Subnet           pfSense Interface   VMnet    Purpose
+  ─────────────   ──────────────   ─────────────────   ──────   ──────────────────
+  Servers (LAN)   10.10.10.0/24   LAN (em1)           VMnet10  DC, SIEM, DB
+  Clients (OPT1)  10.10.20.0/24   OPT1 (em2)          VMnet11  Windows 11 client
+  Attack (OPT2)   10.10.30.0/24   OPT2 (em3)          VMnet19  Kali + Metasploitable
+
+═══════════════════════════════════════════════════════════════════
+VM INVENTORY
+═══════════════════════════════════════════════════════════════════
+
+  VM                OS                    IP              Zone
+  ──────────────    ──────────────────    ─────────────   ──────────
+  SRV-FW01          pfSense 2.7.2         10.10.10.1      Gateway
+  SRV-DC01          Windows Server 2022   10.10.10.133    Servers
+  SRV-SIEM01        Ubuntu 24.04 / Wazuh  10.10.10.135    Servers
+  SRV-DB01          Ubuntu / MySQL        10.10.10.128    Servers
+  CLI-WIN11-01      Windows 11            10.10.20.134    Clients
+  ATT-KALI01        Kali Linux            10.10.30.130    Attack/DMZ
+  DMZ-VULN01        Metasploitable 2      10.10.30.101    Attack/DMZ
+
+═══════════════════════════════════════════════════════════════════
+VM NETWORK ADAPTER ASSIGNMENTS
+═══════════════════════════════════════════════════════════════════
+
+  VM            Adapter 1       Adapter 2       Notes
+  ───────────   ─────────────   ─────────────   ──────────────────────────────
+  SRV-FW01      VMnet8 (WAN)    VMnet10 (LAN)   Also VMnet11 (OPT1), VMnet19 (OPT2)
+  SRV-DC01      VMnet10         —
+  SRV-SIEM01    VMnet10         —
+  SRV-DB01      VMnet10         —
+  CLI-WIN11-01  VMnet11         —
+  ATT-KALI01    VMnet19         VMnet8 (NAT)    VMnet19 = DMZ, VMnet8 = internet
+  DMZ-VULN01    VMnet19         VMnet19         NAT adapter removed — isolated to DMZ only
+
+═══════════════════════════════════════════════════════════════════
+VMX FILE PATHS
+═══════════════════════════════════════════════════════════════════
+
+  SRV-FW01:     D:\VMs\Infrastructure\SRV-FW01.vmx
+  SRV-DC01:     D:\VMs\Infrastructure\SRV-DC01.vmx
+  SRV-SIEM01:   D:\VMs\Infrastructure\SRV-SIEM01\Ubuntu 64-bit.vmx
+  SRV-DB01:     D:\VMs\Infrastructure\SRV-DB01\SRV-DB01.vmx
+  ATT-KALI01:   D:\VMs\Attack\ATT-KALI01\Debian 12.x 64-bit.vmx
+  DMZ-VULN01:   D:\VMs\Attack\Metasploitable2-Linux\Metasploitable.vmx
+  CLI-WIN11-01: D:\VMs\Clients\CLI-WIN11-01\CLI-WIN11-01.vmx
+
+═══════════════════════════════════════════════════════════════════
+VM AUTO-START SEQUENCE (on Dell reboot)
+═══════════════════════════════════════════════════════════════════
+
+  1. Dell powers on
+  2. raymo auto-logs in (registry auto-login)
+  3. VMware Workstation opens (shell:startup shortcut)
+  4. StartLabVMs.bat fires (shell:startup shortcut)
+  5. vmrun starts SRV-FW01    → 30s delay
+  6. vmrun starts SRV-DC01    → 45s delay
+  7. vmrun starts SRV-SIEM01  → 60s delay
+
+  Note: DMZ-VULN01 does NOT auto-start — start manually when needed:
+  "C:\Program Files (x86)\VMware\VMware Workstation\vmrun.exe" -T ws start "D:\VMs\Attack\Metasploitable2-Linux\Metasploitable.vmx" nogui
+
+  Batch file location:  C:\Scripts\StartLabVMs.bat
+  Startup shortcut:     shell:startup → StartLabVMs shortcut
+
+═══════════════════════════════════════════════════════════════════
+FIREWALL RULES (pfSense — Phase 10)
+═══════════════════════════════════════════════════════════════════
+
+  Interface   Source        Destination              Action  Why
+  ─────────   ───────────   ──────────────────────   ──────  ──────────────────────────────
+  OPT2        OPT2 nets     10.10.30.101 only        PASS    Attack → DMZ-VULN01 only
+  OPT2        OPT2 nets     10.10.10.0/24            BLOCK   Block Attack → Servers (T1021)
+  OPT2        OPT2 nets     10.10.20.0/24            BLOCK   Block Attack → Clients
+  OPT1        OPT1 nets     10.10.10.0/24 :53/88/    PASS    Clients → Servers (AD auth)
+                            389/445/3389
+  OPT1        OPT1 nets     Any                      PASS    Clients → Internet
+  OPT1        OPT1 nets     10.10.30.0/24            BLOCK   Block Clients → Attack zone
+  LAN         LAN nets      10.10.20.0/24            PASS    Servers → Clients (AD)
+  LAN         LAN nets      Any                      PASS    Servers → Internet
+  LAN         LAN nets      10.10.30.0/24            BLOCK   Block Servers → Attack zone
+  WAN         Any           Any                      BLOCK   Default deny inbound
+
+  ⚠️ TODO: Update pfSense OPT2 allow rule destination from 10.10.30.131
+     to 10.10.30.101 in pfSense GUI (DMZ-VULN01 IP changed)
+
+═══════════════════════════════════════════════════════════════════
+WAZUH AGENT INVENTORY
+═══════════════════════════════════════════════════════════════════
+
+  Agent              IP              OS                  Status
+  ───────────────    ─────────────   ─────────────────   ───────────────────────
+  SRV-DC01           10.10.10.133    Windows Server 2022 Active
+  SRV-DB01           10.10.10.128    Ubuntu              Active
+  CLI-WIN11-01       10.10.20.134    Windows 11          Active
+  ATT-KALI01         10.10.30.130    Kali Linux          Active
+  Raymonds-MacBook   192.168.0.163   macOS Tahoe         Active (via Dell proxy)
+  DMZ-VULN01         —               Metasploitable 2    None (incompatible OS)
+
+═══════════════════════════════════════════════════════════════════
+CUSTOM WAZUH RULES (local_rules.xml on SRV-SIEM01)
+═══════════════════════════════════════════════════════════════════
+
+  Rule ID   MITRE       Detection
+  ───────   ─────────   ──────────────────────────────────────────
+  100001    T1110       Brute force — 5+ failed logons in 2 min
+  100002    T1110       Brute force success (fails then success)
+  100003    T1136       New Windows user account created
+  100004    T1136       Account added to Administrators group
+  100005    T1027       PowerShell encoded command
+  100006    T1059.001   PowerShell script file executed
+  100007    T1490       Backup file accessed/modified
+  100008    T1053.005   Scheduled task created
+
+═══════════════════════════════════════════════════════════════════
+POWERSHELL SCRIPTS (SRV-DC01 — C:\Scripts\)
+═══════════════════════════════════════════════════════════════════
+
+  Script                  Purpose                         Output
+  ─────────────────────   ─────────────────────────────   ──────────────────
+  AD-HealthCheck.ps1      Services, replication, shares   C:\Lab-Scripts\ CSV
+  Security-Audit.ps1      Locked accounts, Domain Admins  C:\Lab-Scripts\ CSV
+  WazuhAgent-Check.ps1    Agent status across domain      C:\Lab-Scripts\ CSV
+  Backup-Status.ps1       Backup file age + wbadmin       C:\Lab-Scripts\ CSV
+
+═══════════════════════════════════════════════════════════════════
+SSH ACCESS QUICK REFERENCE
+═══════════════════════════════════════════════════════════════════
+
+  From Lenovo → Dell:
+    ssh sshuser@192.168.0.150
+    Password: NewSSHPass2026!
+
+  From Dell SSH → SIEM01:
+    ssh siemadmin@10.10.10.135
+    Password: SIEM2025Lab!
+
+  From Dell SSH → DB01:
+    ssh labadmin@10.10.10.128
+    Password: Lab2025SecureDB!
+
+═══════════════════════════════════════════════════════════════════
+HOME LAB NETWORK ARCHITECTURE v12 | Last Updated: March 23, 2026
+═══════════════════════════════════════════════════════════════════
