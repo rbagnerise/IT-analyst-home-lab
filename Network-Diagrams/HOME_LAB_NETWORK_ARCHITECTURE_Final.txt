@@ -1,97 +1,105 @@
-═══════════════════════════════════════════════════════════════════
-HOME LAB — MASTER CREDENTIALS
-Last Updated: March 28, 2026 | Phase 18 COMPLETE
-═══════════════════════════════════════════════════════════════════
-
-═══════════════════════════════════════════════════════════════════
-PHYSICAL HOST — DELL (HEADLESS)
-═══════════════════════════════════════════════════════════════════
-
-  Dell Ethernet IP:     192.168.0.150 (permanent DHCP reservation)
-  Ethernet MAC:         54-BF-64-62-03-39
-  Auto-Login Account:   raymond.bagnerise@gmail.com (raymo)
-  Microsoft Password:   Tuft13849NNeedle$
-
-  SSH from Lenovo:      ssh sshuser@192.168.0.150
-  SSH Password:         NewSSHPass2026!
-
-  Two-hop to SIEM:      ssh sshuser@192.168.0.150 → ssh siemadmin@10.10.10.135
-  VMnet10 Host Adapter: 10.10.10.2 (static — Dell reaches all lab VMs)
-  VMnet19 Host Adapter: 10.10.30.2 (static — Dell reaches DMZ VMs)
-
-  Auto-Start Method:    C:\Scripts\StartLabVMs.bat (shell:startup shortcut)
-  Auto-Start Order:     SRV-FW01 → SRV-DC01 → SRV-SIEM01
-  Static IP Script:     C:\Users\raymo\StartupScripts\SetVMnetIPs.ps1
-                        (Task Scheduler — SetVMnetIPs — runs at login)
-                        Also enables VMnet19 IPv4 forwarding (Phase 18)
-
-═══════════════════════════════════════════════════════════════════
-COX GATEWAY
-═══════════════════════════════════════════════════════════════════
-
-  URL:                  http://192.168.0.1
-  Username:             admin
-  Password:             Tuft13849NNeedle$
-
-  WiFi MAC (old):       90-DE-80-9D-37-D1 → retired
-  Ethernet MAC:         54-BF-64-62-03-39 → 192.168.0.150
-
-═══════════════════════════════════════════════════════════════════
-VM CREDENTIALS
-═══════════════════════════════════════════════════════════════════
-
-  SRV-FW01 (pfSense)        10.10.10.1      admin / pfSense2025Lab!
-  SRV-DC01 (WinSrv 2022)    10.10.10.133    LAB\Administrator / WinServer2025!
-  SRV-SIEM01 (Wazuh)        10.10.10.135    siemadmin / SIEM2025Lab!
-  SRV-DB01 (Ubuntu/MySQL)   10.10.10.128    labadmin / Lab2025SecureDB!
-  CLI-WIN11-01 (Win11)      10.10.20.134    (not auto-started)
-  ATT-KALI01 (Kali)         10.10.30.130    kali / Kali2025Attack!
-  DMZ-VULN01 (Metaspl.)     10.10.30.101    msfadmin / msfadmin (no Wazuh agent)
-  MacBook Kali (UTM)        192.168.0.163   kali / (local password)
-
-═══════════════════════════════════════════════════════════════════
-WEB INTERFACES
-═══════════════════════════════════════════════════════════════════
-
-  Wazuh Dashboard:      https://10.10.10.135        admin / SIEM2025Lab*
-  pfSense Web GUI:      https://10.10.10.1           admin / pfSense2025Lab!
-  phpMyAdmin:           http://10.10.10.128/phpmyadmin  root / MySQL2025Root!
-  Nessus UI:            https://127.0.0.1:8834       nessusadmin / Nessus2025Lab!
-                        (must be accessed from ATT-KALI01)
-  Metasploitable Web:   http://192.168.0.150:8080    (via Dell portproxy)
-  Direct DMZ Access:    sudo ip route add 10.10.30.0/24 via 192.168.0.150 (runtime only)
-
-═══════════════════════════════════════════════════════════════════
-RDP ACCESS
-═══════════════════════════════════════════════════════════════════
-
-  SRV-DC01 RDP:         10.10.10.133
-  Username:             LAB\Administrator
-  Password:             WinServer2025!
-  Note:                 Use "More choices → Use a different account"
-
-═══════════════════════════════════════════════════════════════════
-RBAC ACCOUNTS (SRV-DC01)
-═══════════════════════════════════════════════════════════════════
-
-  tier0admin            SRV-DC01 only           T0Admin2025!
-  tier1admin            Servers only            T1Admin2025!
-  tier2support          Workstations only       T2Support2025!
-  hr.user01             HR_Department OU        HRDept2025!@#
-  finance.user01        Standard_Users OU       FinDept2025!@#
-
-═══════════════════════════════════════════════════════════════════
-VMX FILE PATHS (for vmrun / troubleshooting)
-═══════════════════════════════════════════════════════════════════
-
-  D:\VMs\Infrastructure\SRV-FW01.vmx
-  D:\VMs\Infrastructure\SRV-DC01.vmx
-  D:\VMs\Infrastructure\SRV-SIEM01\Ubuntu 64-bit.vmx
-  D:\VMs\Infrastructure\SRV-DB01\SRV-DB01.vmx
-  D:\VMs\Attack\ATT-KALI01\Debian 12.x 64-bit.vmx
-  D:\VMs\Attack\Metasploitable2-Linux\Metasploitable.vmx
-  D:\VMs\Clients\CLI-WIN11-01\CLI-WIN11-01.vmx
-
-═══════════════════════════════════════════════════════════════════
-HOME LAB MASTER CREDENTIALS | Last Updated: March 28, 2026 | Phase 18 COMPLETE
-═══════════════════════════════════════════════════════════════════
+HOME LAB NETWORK ARCHITECTURE — v14
+April 1, 2026
+INTERNET
+│
+│ (VMware NAT)
+▼
+┌─────────────────────────────────────────┐
+│  SRV-FW01 — pfSense 2.7.2              │
+│  192.168.179.128 (WAN — VMnet8)        │
+│                                         │
+│  LAN  (em1) → 10.10.10.1/24           │
+│  OPT1 (em2) → 10.10.20.1/24           │
+│  OPT2 (em3) → 10.10.30.1/24           │
+└────┬──────────────┬──────────────┬──────┘
+     │              │              │
+     ▼              ▼              ▼
+VMnet10         VMnet11        VMnet19
+10.10.10.0/24  10.10.20.0/24  10.10.30.0/24
+SERVERS        CLIENTS        ATTACK / DMZ
+══════════════════════════════════════════════════════
+DELL HOST (HYPERVISOR) — HEADLESS CONFIGURATION ✅
+══════════════════════════════════════════════════════
+Physical IP  : 192.168.0.150  (permanent DHCP reservation)
+VMnet10 NIC  : 10.10.10.2     (VMware Network Adapter VMnet10 — static)
+VMnet19 NIC  : 10.10.30.2     (VMware Network Adapter VMnet19 — static)
+SSH Access   : ssh sshuser@192.168.0.150  (from Lenovo or any LAN device)
+Auto-Start   : Task Scheduler → StartLabVMs
+               Starts: SRV-FW01 → SRV-DC01 → SRV-SIEM01 (staggered delays)
+               ⚠️ Requires user session — runs at login, not pure boot
+Static IPs   : Task Scheduler → SetVMnetIPs (runs at login, RunLevel Highest)
+               Script: D:\Lab-Documentation\Scripts\SetVMnetIPs.ps1
+               Sets VMnet10 → 10.10.10.2 and VMnet19 → 10.10.30.2 on every login
+               Also enables VMnet19 IPv4 forwarding on every login (Phase 18)
+VM Scripts   : C:\Scripts\StartLabVMs.ps1
+IP Forwarding: Enabled on Dell Ethernet (IPv4) and VMnet19 (IPv4) — Phase 18
+               Enables direct MacBook Kali → DMZ routing through Dell
+               Registry: HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\IPEnableRouter=1
+Port Forwards: netsh portproxy (persistent)
+               0.0.0.0:1514  → 10.10.10.135:1514  (Wazuh agent)
+               0.0.0.0:1515  → 10.10.10.135:1515  (Wazuh agent)
+               0.0.0.0:8080  → 10.10.30.101:80    (Metasploitable HTTP)
+               0.0.0.0:21    → 10.10.30.101:21    (Metasploitable FTP)
+               0.0.0.0:22    → 10.10.30.101:22    (Metasploitable SSH)
+               0.0.0.0:1524  → 10.10.30.101:1524  (Metasploitable bindshell)
+               0.0.0.0:6200  → 10.10.30.101:6200  (vsftpd backdoor)
+               Note: 139/445 removed — SMB reached via direct routing (Phase 18)
+GitHub Repo  : enterprise-security-home-lab/IT-analyst-home-lab
+               D:\Lab-Documentation → pushed March 28, 2026
+══════════════════════════════════════════════════════
+SERVERS ZONE — VMnet10 (10.10.10.0/24)
+══════════════════════════════════════════════════════
+├─ SRV-DC01 ✅ → 10.10.10.133
+│  ├─ Active Directory Domain Services
+│  ├─ DNS (lab.local)
+│  ├─ GPOs: Password, Lockout, Audit (5 policies)
+│  ├─ RBAC Tiered Admin Model (Tier 0/1/2 — Phase 11)
+│  ├─ RDP enabled — use LAB\Administrator (not Microsoft account)
+│  ├─ Backup VHD: C:\BackupDisk.vhd → E: (10GB, NTFS)
+│  ├─ File-level backup: C:\Lab-Backups\ (timestamped folders)
+│  ├─ Lab scripts: C:\Lab-Scripts\ (CSV reports output)
+│  ├─ PowerShell Scripts: C:\Scripts\ (4 automation scripts)
+│  │   ├─ AD-HealthCheck.ps1        — AD services, replication, SYSVOL
+│  │   ├─ Backup-Status.ps1         — backup file age and existence check
+│  │   ├─ Security-Audit.ps1        — locked accounts, Domain Admins, disabled users
+│  │   └─ WazuhAgent-Check.ps1      — agent service status across domain machines
+│  └─ → Wazuh Agent 001 → SRV-SIEM01 ● ACTIVE
+│
+├─ SRV-DB01 ✅ → 10.10.10.128
+│  ├─ MySQL 8.0 + Apache 2.4 + phpMyAdmin
+│  └─ → Wazuh Agent 003 → SRV-SIEM01 ● ACTIVE
+│
+└─ SRV-SIEM01 ✅ → 10.10.10.135
+   ├─ Wazuh Manager 4.7.5 + OpenSearch
+   ├─ SSH: ssh siemadmin@10.10.10.135 (from Dell host)
+   ├─ Receives logs from ALL agents
+   ├─ 1,450+ events | 12+ MITRE techniques
+   ├─ 9 custom rules (100001–100009)
+   │   ├─ 100001 — Brute force detected (T1110)
+   │   ├─ 100002 — Brute force + success (T1110)
+   │   ├─ 100003 — New user account created (T1136)
+   │   ├─ 100004 — Account added to Admins (T1136)
+   │   ├─ 100005 — PowerShell encoded command (T1027)
+   │   ├─ 100006 — PowerShell script execution (T1059.001)
+   │   ├─ 100007 — Backup file accessed/modified (T1490)
+   │   ├─ 100008 — Scheduled task created (T1053.005)
+   │   └─ 100009 — Bindshell port 1524 detected (T1059) — level 15
+   ├─ Best alert: Rule 92657 Pass-the-Hash T1550.002
+   └─ Web UI: https://10.10.10.135 ✅ LIVE
+══════════════════════════════════════════════════════
+CLIENTS ZONE — VMnet11 (10.10.20.0/24)
+══════════════════════════════════════════════════════
+└─ CLI-WIN11-01 ✅ → 10.10.20.134
+   ├─ Windows 11 Pro — Domain-joined (lab.local)
+   ├─ Users: localadmin, LAB\Administrator
+   ├─ File & Printer Sharing enabled (lateral movement testing)
+   └─ → Wazuh Agent 002 → SRV-SIEM01 ● ACTIVE
+══════════════════════════════════════════════════════
+ATTACK / DMZ ZONE — VMnet19 (10.10.30.0/24)
+══════════════════════════════════════════════════════
+├─ ATT-KALI01 ✅ → 10.10.30.130
+│  ├─ Kali Linux 2024.4 (lab VM on Dell)
+│  ├─ Tools: Metasploit v6.4, Nmap, Hydra, NetExec, Netcat
+│  ├─ Nessus Essentials 10.11.2 (https://127.0.0.1:8834)
+│  ├─ Wordlists: rockyou.txt (14.3M passwords)
+│  ├─ Network Adapter 1:
