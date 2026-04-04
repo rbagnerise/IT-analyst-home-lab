@@ -1,0 +1,105 @@
+HOME LAB NETWORK DIAGRAM — v14
+April 1, 2026
+INTERNET
+│
+│ (VMware NAT)
+▼
+┌─────────────────────────────────────────┐
+│  SRV-FW01 — pfSense 2.7.2              │
+│  192.168.179.128 (WAN — VMnet8)        │
+│                                         │
+│  LAN  (em1) → 10.10.10.1/24           │
+│  OPT1 (em2) → 10.10.20.1/24           │
+│  OPT2 (em3) → 10.10.30.1/24           │
+└────┬──────────────┬──────────────┬──────┘
+     │              │              │
+     ▼              ▼              ▼
+VMnet10         VMnet11        VMnet19
+10.10.10.0/24  10.10.20.0/24  10.10.30.0/24
+SERVERS        CLIENTS        ATTACK / DMZ
+══════════════════════════════════════════════════════
+DELL HOST (HYPERVISOR) — HEADLESS CONFIGURATION ✅
+══════════════════════════════════════════════════════
+Physical IP  : 192.168.0.150  (permanent DHCP reservation)
+VMnet10 NIC  : 10.10.10.2     (VMware Network Adapter VMnet10 — static)
+VMnet19 NIC  : 10.10.30.2     (VMware Network Adapter VMnet19 — static)
+SSH Access   : ssh sshuser@192.168.0.150  (from Lenovo or any LAN device)
+Auto-Start   : Task Scheduler → StartLabVMs
+               Starts: SRV-FW01 → SRV-DC01 → SRV-SIEM01 (staggered delays)
+               ⚠️ Requires user session — runs at login, not pure boot
+Static IPs   : Task Scheduler → SetVMnetIPs (runs at login, RunLevel Highest)
+               Script: D:\Lab-Documentation\Scripts\SetVMnetIPs.ps1
+               Sets VMnet10 → 10.10.10.2 and VMnet19 → 10.10.30.2 on every login
+               Also enables VMnet19 IPv4 forwarding on every login (Phase 18)
+VM Scripts   : C:\Scripts\StartLabVMs.ps1
+IP Forwarding: Enabled on Dell Ethernet (IPv4) and VMnet19 (IPv4) — Phase 18
+               Enables direct MacBook Kali → DMZ routing through Dell
+               Registry: HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\IPEnableRouter=1
+Port Forwards: netsh portproxy (persistent)
+               0.0.0.0:1514  → 10.10.10.135:1514  (Wazuh agent)
+               0.0.0.0:1515  → 10.10.10.135:1515  (Wazuh agent)
+               0.0.0.0:8080  → 10.10.30.101:80    (Metasploitable HTTP)
+               0.0.0.0:21    → 10.10.30.101:21    (Metasploitable FTP)
+               0.0.0.0:22    → 10.10.30.101:22    (Metasploitable SSH)
+               0.0.0.0:1524  → 10.10.30.101:1524  (Metasploitable bindshell)
+               0.0.0.0:6200  → 10.10.30.101:6200  (vsftpd backdoor)
+               Note: 139/445 removed — SMB reached via direct routing (Phase 18)
+GitHub Repo  : enterprise-security-home-lab/IT-analyst-home-lab
+               D:\Lab-Documentation → pushed March 28, 2026
+══════════════════════════════════════════════════════
+SERVERS ZONE — VMnet10 (10.10.10.0/24)
+══════════════════════════════════════════════════════
+├─ SRV-DC01 ✅ → 10.10.10.133
+│  ├─ Active Directory Domain Services
+│  ├─ DNS (lab.local)
+│  ├─ GPOs: Password, Lockout, Audit (5 policies)
+│  ├─ RBAC Tiered Admin Model (Tier 0/1/2 — Phase 11)
+│  ├─ RDP enabled — use LAB\Administrator (not Microsoft account)
+│  ├─ Backup VHD: C:\BackupDisk.vhd → E: (10GB, NTFS)
+│  ├─ File-level backup: C:\Lab-Backups\ (timestamped folders)
+│  ├─ Lab scripts: C:\Lab-Scripts\ (CSV reports output)
+│  ├─ PowerShell Scripts: C:\Scripts\ (4 automation scripts)
+│  │   ├─ AD-HealthCheck.ps1        — AD services, replication, SYSVOL
+│  │   ├─ Backup-Status.ps1         — backup file age and existence check
+│  │   ├─ Security-Audit.ps1        — locked accounts, Domain Admins, disabled users
+│  │   └─ WazuhAgent-Check.ps1      — agent service status across domain machines
+│  └─ → Wazuh Agent 001 → SRV-SIEM01 ● ACTIVE
+│
+├─ SRV-DB01 ✅ → 10.10.10.128
+│  ├─ MySQL 8.0 + Apache 2.4 + phpMyAdmin
+│  └─ → Wazuh Agent 003 → SRV-SIEM01 ● ACTIVE
+│
+└─ SRV-SIEM01 ✅ → 10.10.10.135
+   ├─ Wazuh Manager 4.7.5 + OpenSearch
+   ├─ SSH: ssh siemadmin@10.10.10.135 (from Dell host)
+   ├─ Receives logs from ALL agents
+   ├─ 1,450+ events | 12+ MITRE techniques
+   ├─ 9 custom rules (100001–100009)
+   │   ├─ 100001 — Brute force detected (T1110)
+   │   ├─ 100002 — Brute force + success (T1110)
+   │   ├─ 100003 — New user account created (T1136)
+   │   ├─ 100004 — Account added to Admins (T1136)
+   │   ├─ 100005 — PowerShell encoded command (T1027)
+   │   ├─ 100006 — PowerShell script execution (T1059.001)
+   │   ├─ 100007 — Backup file accessed/modified (T1490)
+   │   ├─ 100008 — Scheduled task created (T1053.005)
+   │   └─ 100009 — Bindshell port 1524 detected (T1059) — level 15
+   ├─ Best alert: Rule 92657 Pass-the-Hash T1550.002
+   └─ Web UI: https://10.10.10.135 ✅ LIVE
+══════════════════════════════════════════════════════
+CLIENTS ZONE — VMnet11 (10.10.20.0/24)
+══════════════════════════════════════════════════════
+└─ CLI-WIN11-01 ✅ → 10.10.20.134
+   ├─ Windows 11 Pro — Domain-joined (lab.local)
+   ├─ Users: localadmin, LAB\Administrator
+   ├─ File & Printer Sharing enabled (lateral movement testing)
+   └─ → Wazuh Agent 002 → SRV-SIEM01 ● ACTIVE
+══════════════════════════════════════════════════════
+ATTACK / DMZ ZONE — VMnet19 (10.10.30.0/24)
+══════════════════════════════════════════════════════
+├─ ATT-KALI01 ✅ → 10.10.30.130
+│  ├─ Kali Linux 2024.4 (lab VM on Dell)
+│  ├─ Tools: Metasploit v6.4, Nmap, Hydra, NetExec, Netcat
+│  ├─ Nessus Essentials 10.11.2 (https://127.0.0.1:8834)
+│  ├─ Wordlists: rockyou.txt (14.3M passwords)
+│  ├─ Network Adapter 1:
