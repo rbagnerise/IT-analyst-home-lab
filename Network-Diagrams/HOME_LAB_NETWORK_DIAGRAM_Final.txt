@@ -1,5 +1,5 @@
-HOME LAB NETWORK DIAGRAM — v14
-April 1, 2026
+HOME LAB NETWORK DIAGRAM — v15
+April 16, 2026
 INTERNET
 │
 │ (VMware NAT)
@@ -11,6 +11,9 @@ INTERNET
 │  LAN  (em1) → 10.10.10.1/24           │
 │  OPT1 (em2) → 10.10.20.1/24           │
 │  OPT2 (em3) → 10.10.30.1/24           │
+│                                         │
+│  Syslog → 10.10.10.135:514 UDP        │
+│  (Firewall events → Wazuh — Phase 21) │
 └────┬──────────────┬──────────────┬──────┘
      │              │              │
      ▼              ▼              ▼
@@ -45,7 +48,7 @@ Port Forwards: netsh portproxy (persistent)
                0.0.0.0:6200  → 10.10.30.101:6200  (vsftpd backdoor)
                Note: 139/445 removed — SMB reached via direct routing (Phase 18)
 GitHub Repo  : enterprise-security-home-lab/IT-analyst-home-lab
-               D:\Lab-Documentation → pushed March 28, 2026
+               D:\Lab-Documentation → last push April 16, 2026 (Phase 21)
 ══════════════════════════════════════════════════════
 SERVERS ZONE — VMnet10 (10.10.10.0/24)
 ══════════════════════════════════════════════════════
@@ -72,9 +75,12 @@ SERVERS ZONE — VMnet10 (10.10.10.0/24)
 └─ SRV-SIEM01 ✅ → 10.10.10.135
    ├─ Wazuh Manager 4.7.5 + OpenSearch
    ├─ SSH: ssh siemadmin@10.10.10.135 (from Dell host)
-   ├─ Receives logs from ALL agents
-   ├─ 1,450+ events | 12+ MITRE techniques
-   ├─ 9 custom rules (100001–100009)
+   ├─ Receives logs from ALL agents + pfSense syslog (Phase 21)
+   ├─ Syslog listener: UDP 514, allowed-ips 10.10.10.0/24
+   ├─ Archive logging: <logall>yes</logall> — /var/ossec/logs/archives/
+   ├─ pfSense decoder: prematch "filterlog" in local_decoder.xml
+   ├─ 1,450+ events | 13+ MITRE techniques
+   ├─ 10 custom rules (100001–100010)
    │   ├─ 100001 — Brute force detected (T1110)
    │   ├─ 100002 — Brute force + success (T1110)
    │   ├─ 100003 — New user account created (T1136)
@@ -83,7 +89,8 @@ SERVERS ZONE — VMnet10 (10.10.10.0/24)
    │   ├─ 100006 — PowerShell script execution (T1059.001)
    │   ├─ 100007 — Backup file accessed/modified (T1490)
    │   ├─ 100008 — Scheduled task created (T1053.005)
-   │   └─ 100009 — Bindshell port 1524 detected (T1059) — level 15
+   │   ├─ 100009 — Bindshell port 1524 detected (T1059) — level 15
+   │   └─ 100010 — vsftpd backdoor port 6200 (T1190) — level 12
    ├─ Best alert: Rule 92657 Pass-the-Hash T1550.002
    └─ Web UI: https://10.10.10.135 ✅ LIVE
 ══════════════════════════════════════════════════════
@@ -102,4 +109,49 @@ ATTACK / DMZ ZONE — VMnet19 (10.10.30.0/24)
 │  ├─ Tools: Metasploit v6.4, Nmap, Hydra, NetExec, Netcat
 │  ├─ Nessus Essentials 10.11.2 (https://127.0.0.1:8834)
 │  ├─ Wordlists: rockyou.txt (14.3M passwords)
-│  ├─ Network Adapter 1:
+│  ├─ Network Adapter 1: VMnet19 (DMZ — eth1 at 10.10.30.130)
+│  ├─ Network Adapter 2: VMnet10 (Servers — for agent reporting)
+│  ├─ Note: SSH service disabled by default — sudo systemctl start ssh
+│  └─ → Wazuh Agent 004 → SRV-SIEM01 ● ACTIVE
+│
+└─ DMZ-VULN01 ✅ → 10.10.30.101
+   ├─ Metasploitable 2 (intentionally vulnerable — Ubuntu 8.04)
+   ├─ Services: vsftpd 2.3.4, Samba 3.0.20, Apache 2.2.8, MySQL, FTP, Telnet
+   ├─ Backdoors: vsftpd port 6200, bindshell port 1524
+   ├─ Return route: post-up route add -net 192.168.0.0/24 gw 10.10.30.2
+   ├─ SCP legacy flags required: -oHostKeyAlgorithms=+ssh-rsa
+   ├─ Wazuh Agent: None (Ubuntu 8.04 incompatible)
+   └─ On-demand only — powered on for attack exercises
+══════════════════════════════════════════════════════
+EXTERNAL ATTACK MACHINE — MacBook M1 Pro
+══════════════════════════════════════════════════════
+Physical IP  : 192.168.0.163 (home LAN — Kali via UTM)
+Wazuh Agent  : 005 ● ACTIVE (reports via Dell port forward)
+DMZ Route    : sudo ip route add 10.10.30.0/24 via 192.168.0.150
+               Runtime only — must be re-run after every reboot
+Path to DMZ  : MacBook Kali → Dell (192.168.0.150) → VMnet19 → DMZ-VULN01
+══════════════════════════════════════════════════════
+SYSLOG PIPELINE (pfSense → Wazuh) — Phase 21
+══════════════════════════════════════════════════════
+SRV-FW01 (10.10.10.1)
+   │  Firewall events (filterlog format)
+   │  UDP 514
+   ▼
+SRV-SIEM01 (10.10.10.135)
+   │  Decoder: pfSense prematch "filterlog"
+   │  Rules: 100010 matches dstport=6200 → T1190 alert
+   ▼
+/var/ossec/logs/archives/archives.log  (raw events)
+/var/ossec/logs/alerts/alerts.log      (matched alerts)
+══════════════════════════════════════════════════════
+PHASE COMPLETION SUMMARY
+══════════════════════════════════════════════════════
+Phase  1–16  : Infrastructure, AD, SIEM, RBAC, firewall, vuln mgmt
+Phase  17    : Attack exercises via portproxy — T1046, T1059, T1110
+Phase  18    : Direct routing + T1190 exploits (vsftpd, Samba)
+Phase  19    : Packet capture of vsftpd exploit — Wireshark analysis
+Phase  20    : IR-2026-003 + full documentation push
+Phase  21    : pfSense syslog pipeline + custom rule 100010 (vsftpd port 6200)
+══════════════════════════════════════════════════════
+HOME LAB NETWORK DIAGRAM v15 | Last Updated: April 16, 2026
+══════════════════════════════════════════════════════

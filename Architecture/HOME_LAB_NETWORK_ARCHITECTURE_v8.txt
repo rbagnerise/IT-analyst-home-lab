@@ -1,6 +1,6 @@
 ═══════════════════════════════════════════════════════════════════
-HOME LAB — NETWORK ARCHITECTURE v12
-Last Updated: April 4, 2026 | Phase 20 COMPLETE
+HOME LAB — NETWORK ARCHITECTURE v13
+Last Updated: April 16, 2026 | Phase 21 COMPLETE
 ═══════════════════════════════════════════════════════════════════
 
 ═══════════════════════════════════════════════════════════════════
@@ -124,7 +124,7 @@ PORT FORWARDS (Dell netsh portproxy — persistent)
   Note: 139/445 removed — SMB reached via direct routing only
 
 ═══════════════════════════════════════════════════════════════════
-FIREWALL RULES (pfSense — Phase 10)
+FIREWALL RULES (pfSense — Phase 10 + Phase 21 additions)
 ═══════════════════════════════════════════════════════════════════
 
   Interface   Source        Destination              Action  Why
@@ -139,6 +139,7 @@ FIREWALL RULES (pfSense — Phase 10)
   LAN         LAN nets      10.10.20.0/24            PASS    Servers → Clients (AD)
   LAN         LAN nets      Any                      PASS    Servers → Internet
   LAN         LAN nets      10.10.30.0/24            BLOCK   Block Servers → Attack zone
+  LAN         10.10.10.1    10.10.10.135 :514/UDP    PASS    pfSense syslog → Wazuh
   WAN         Any           Any                      BLOCK   Default deny inbound
 
 ═══════════════════════════════════════════════════════════════════
@@ -169,6 +170,38 @@ CUSTOM WAZUH RULES (local_rules.xml on SRV-SIEM01)
   100007    T1490       Backup file accessed/modified
   100008    T1053.005   Scheduled task created
   100009    T1059       Bindshell port 1524 detected (level 15)
+  100010    T1190       vsftpd backdoor — port 6200 connection (level 12)
+
+  Decoder:  pfSense filterlog parent decoder in local_decoder.xml
+            Prematch on "filterlog" — rule-level dstport matching
+
+═══════════════════════════════════════════════════════════════════
+SYSLOG PIPELINE (pfSense → Wazuh)
+═══════════════════════════════════════════════════════════════════
+
+  Source:     SRV-FW01 (10.10.10.1)
+  Target:     SRV-SIEM01 (10.10.10.135) UDP 514
+  Content:    Firewall events (filterlog format)
+
+  pfSense config:
+    Status → System Logs → Settings → Remote Logging
+    Remote log server: 10.10.10.135:514
+    Remote Syslog Contents: Firewall Events only
+
+  pfSense firewall rule (LAN):
+    Allow UDP 10.10.10.1 → 10.10.10.135:514 (pfSense syslog to Wazuh)
+
+  Wazuh manager (/var/ossec/etc/ossec.conf):
+    <remote>
+      <connection>syslog</connection>
+      <port>514</port>
+      <protocol>udp</protocol>
+      <allowed-ips>10.10.10.0/24</allowed-ips>
+    </remote>
+    <logall>yes</logall>
+
+  Archive location:  /var/ossec/logs/archives/archives.log
+  Alert location:    /var/ossec/logs/alerts/alerts.log
 
 ═══════════════════════════════════════════════════════════════════
 ATTACK EXERCISES COMPLETED
@@ -183,6 +216,9 @@ ATTACK EXERCISES COMPLETED
   18      T1190       Samba usermap_script → root         SUCCESS
   19      T1190       vsftpd exploit — pcap captured      SUCCESS
   19      T1059       Backdoor shell — Wireshark analyzed SUCCESS
+  21      T1190       Rule 100010 fires on port 6200      VALIDATED
+                      (synthetic filterlog injection —
+                      live exploit re-test pending)
 
 ═══════════════════════════════════════════════════════════════════
 PACKET CAPTURE
@@ -245,8 +281,8 @@ GITHUB REPOSITORY
   Repo:       enterprise-security-home-lab/IT-analyst-home-lab
   Local:      D:\Lab-Documentation
   Branch:     master
-  Last push:  April 4, 2026 — Phase 20 IR-2026-003
+  Last push:  April 16, 2026 — Phase 21 custom Wazuh rule 100010
 
 ═══════════════════════════════════════════════════════════════════
-HOME LAB NETWORK ARCHITECTURE v12 | Last Updated: April 4, 2026
+HOME LAB NETWORK ARCHITECTURE v13 | Last Updated: April 16, 2026
 ═══════════════════════════════════════════════════════════════════
