@@ -1,0 +1,41 @@
+=================================================================
+ATTACK SCENARIO TEMPLATE
+=================================================================
+
+SCENARIO NAME:
+Date Performed:
+Objective:
+Tools Used:
+
+ATTACKER:
+Source VM:
+Source IP:
+
+TARGET:
+Target VM:
+Target IP:
+
+ATTACK STEPS:
+1.
+2.
+3.
+
+RESULTS:
+Success: [ ] Yes  [ ] No
+Access Gained:
+Data Exfiltrated:
+
+DETECTION:
+Was attack detected: [ ] Yes  [ ] No
+Detection method:
+Logs generated:
+
+LESSONS LEARNED:
+Attack techniques:
+Defense recommendations:
+Skills practiced:
+
+SCREENSHOTS:
+Location:
+
+=================================================================

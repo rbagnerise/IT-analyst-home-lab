@@ -1,0 +1,288 @@
+═══════════════════════════════════════════════════════════════════
+HOME LAB — NETWORK ARCHITECTURE v13
+Last Updated: April 16, 2026 | Phase 21 COMPLETE
+═══════════════════════════════════════════════════════════════════
+
+═══════════════════════════════════════════════════════════════════
+PHYSICAL SETUP
+═══════════════════════════════════════════════════════════════════
+
+  Host Machine:         Dell OptiPlex 7050 (headless — no monitor required)
+  Connection:           Hardwired ethernet to Cox gateway
+  Dell Ethernet IP:     192.168.0.150 (permanent DHCP reservation)
+  Ethernet MAC:         54-BF-64-62-03-39
+  Remote Access:        ssh sshuser@192.168.0.150 from Lenovo laptop
+  SSH Password:         Termius2025Attack!
+  Auto-Login:           raymond.bagnerise@gmail.com (raymo) via registry
+  Hypervisor:           VMware Workstation Pro 17
+  Total VMs:            7
+
+  Cox Gateway:          192.168.0.1 (home LAN)
+  Lenovo Laptop:        192.168.0.241 (used for SSH access and Wireshark)
+  MacBook M1 Pro:       192.168.0.163 (Kali via UTM — external attack machine)
+
+═══════════════════════════════════════════════════════════════════
+VMWARE VIRTUAL NETWORK ADAPTERS (Dell Host)
+═══════════════════════════════════════════════════════════════════
+
+  VMnet1  (Host-Only):  192.168.242.1   — unused
+  VMnet8  (NAT):        192.168.147.1   — internet access for VMs
+  VMnet10 (Host-Only):  10.10.10.2      — Dell host reaches Servers zone
+                        Static IP set via SetVMnetIPs.ps1
+  VMnet19 (Host-Only):  10.10.30.2      — Dell host reaches DMZ zone
+                        Static IP set via SetVMnetIPs.ps1
+                        IPv4 forwarding enabled — routes MacBook Kali traffic to DMZ
+
+═══════════════════════════════════════════════════════════════════
+NETWORK ZONES
+═══════════════════════════════════════════════════════════════════
+
+  Zone            Subnet           pfSense Interface   Purpose
+  ─────────────   ──────────────   ─────────────────   ──────────────────
+  Servers (LAN)   10.10.10.0/24   LAN                 DC, SIEM, DB
+  Clients (OPT1)  10.10.20.0/24   OPT1                Windows 11 client
+  DMZ (OPT2)      10.10.30.0/24   OPT2                Kali + Metasploitable
+
+═══════════════════════════════════════════════════════════════════
+VM INVENTORY
+═══════════════════════════════════════════════════════════════════
+
+  VM                OS                    IP              Zone
+  ──────────────    ──────────────────    ─────────────   ──────────
+  SRV-FW01          pfSense 2.7.2         10.10.10.1      Gateway
+  SRV-DC01          Windows Server 2022   10.10.10.133    Servers
+  SRV-SIEM01        Ubuntu 24.04 / Wazuh  10.10.10.135    Servers
+  SRV-DB01          Ubuntu / MySQL        10.10.10.128    Servers
+  CLI-WIN11-01      Windows 11            10.10.20.134    Clients
+  ATT-KALI01        Kali Linux            10.10.30.130    DMZ
+  DMZ-VULN01        Metasploitable 2      10.10.30.101    DMZ
+
+═══════════════════════════════════════════════════════════════════
+VMX FILE PATHS
+═══════════════════════════════════════════════════════════════════
+
+  SRV-FW01:     D:\VMs\Infrastructure\SRV-FW01.vmx
+  SRV-DC01:     D:\VMs\Infrastructure\SRV-DC01.vmx
+  SRV-SIEM01:   D:\VMs\Infrastructure\SRV-SIEM01\Ubuntu 64-bit.vmx
+  SRV-DB01:     D:\VMs\Infrastructure\SRV-DB01\SRV-DB01.vmx
+  ATT-KALI01:   D:\VMs\Attack\ATT-KALI01\Debian 12.x 64-bit.vmx
+  DMZ-VULN01:   D:\VMs\Attack\Metasploitable2-Linux\Metasploitable.vmx
+  CLI-WIN11-01: D:\VMs\Clients\CLI-WIN11-01\CLI-WIN11-01.vmx
+
+═══════════════════════════════════════════════════════════════════
+VM AUTO-START SEQUENCE (on Dell reboot)
+═══════════════════════════════════════════════════════════════════
+
+  1. Dell powers on
+  2. raymo auto-logs in (registry auto-login)
+  3. VMware Workstation opens (shell:startup shortcut)
+  4. StartLabVMs.bat fires (shell:startup shortcut)
+  5. vmrun starts SRV-FW01    → 30s delay
+  6. vmrun starts SRV-DC01    → 45s delay
+  7. vmrun starts SRV-SIEM01  → 60s delay
+
+  Batch file location:  C:\Scripts\StartLabVMs.bat
+  Startup shortcut:     shell:startup → StartLabVMs shortcut
+
+  Static IPs:           D:\Lab-Documentation\Scripts\SetVMnetIPs.ps1
+                        Runs at login via Task Scheduler (RunLevel Highest)
+                        Sets VMnet10 → 10.10.10.2
+                        Sets VMnet19 → 10.10.30.2
+                        Enables VMnet19 IPv4 forwarding
+
+═══════════════════════════════════════════════════════════════════
+ROUTING — MACBOOK KALI → DMZ (Direct Route)
+═══════════════════════════════════════════════════════════════════
+
+  MacBook Kali route (runtime only — re-run after reboot):
+    sudo ip route add 10.10.30.0/24 via 192.168.0.150
+
+  Dell forwards via VMnet19 IPv4 forwarding (persistent via SetVMnetIPs.ps1)
+
+  DMZ-VULN01 return route (persistent via /etc/network/interfaces):
+    post-up route add -net 192.168.0.0/24 gw 10.10.30.2
+
+  SCP from DMZ-VULN01 (run from Dell, not from Metasploitable):
+    scp -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa
+        msfadmin@10.10.30.101:/path C:\dest\
+
+═══════════════════════════════════════════════════════════════════
+PORT FORWARDS (Dell netsh portproxy — persistent)
+═══════════════════════════════════════════════════════════════════
+
+  External Port   Internal Target              Purpose
+  ─────────────   ──────────────────────────   ─────────────────────────
+  0.0.0.0:1514  → 10.10.10.135:1514           Wazuh agent enrollment
+  0.0.0.0:1515  → 10.10.10.135:1515           Wazuh agent communication
+  0.0.0.0:8080  → 10.10.30.101:80             Metasploitable HTTP
+  0.0.0.0:21    → 10.10.30.101:21             Metasploitable FTP
+  0.0.0.0:22    → 10.10.30.101:22             Metasploitable SSH
+  0.0.0.0:1524  → 10.10.30.101:1524           Metasploitable bindshell
+  0.0.0.0:6200  → 10.10.30.101:6200           vsftpd backdoor port
+  0.0.0.0:8443  → 10.10.10.135:443            Wazuh dashboard (iPad proxy)
+  0.0.0.0:8080  → 10.10.10.135:80             Wazuh dashboard HTTP (inactive)
+  Note: 139/445 removed — SMB reached via direct routing only
+
+═══════════════════════════════════════════════════════════════════
+FIREWALL RULES (pfSense — Phase 10 + Phase 21 additions)
+═══════════════════════════════════════════════════════════════════
+
+  Interface   Source        Destination              Action  Why
+  ─────────   ───────────   ──────────────────────   ──────  ──────────────────────────────
+  OPT2        OPT2 nets     10.10.30.101 only        PASS    Attack → DMZ-VULN01 only
+  OPT2        OPT2 nets     10.10.10.0/24            BLOCK   Block Attack → Servers (T1021)
+  OPT2        OPT2 nets     10.10.20.0/24            BLOCK   Block Attack → Clients
+  OPT1        OPT1 nets     10.10.10.0/24 :53/88/    PASS    Clients → Servers (AD auth)
+                            389/445/3389
+  OPT1        OPT1 nets     Any                      PASS    Clients → Internet
+  OPT1        OPT1 nets     10.10.30.0/24            BLOCK   Block Clients → Attack zone
+  LAN         LAN nets      10.10.20.0/24            PASS    Servers → Clients (AD)
+  LAN         LAN nets      Any                      PASS    Servers → Internet
+  LAN         LAN nets      10.10.30.0/24            BLOCK   Block Servers → Attack zone
+  LAN         10.10.10.1    10.10.10.135 :514/UDP    PASS    pfSense syslog → Wazuh
+  WAN         Any           Any                      BLOCK   Default deny inbound
+
+═══════════════════════════════════════════════════════════════════
+WAZUH AGENT INVENTORY
+═══════════════════════════════════════════════════════════════════
+
+  Agent              IP              OS                  Status
+  ───────────────    ─────────────   ─────────────────   ───────
+  001 — SRV-DC01     10.10.10.133    Windows Server 2022 Active
+  002 — CLI-WIN11    10.10.20.134    Windows 11          Active
+  003 — SRV-DB01     10.10.10.128    Ubuntu 24.04        Active
+  004 — ATT-KALI01   10.10.30.130    Kali Linux          Active
+  005 — MacBook      192.168.0.163   Kali Linux (UTM)    Active (via Dell proxy)
+  DMZ-VULN01         10.10.30.101    Metasploitable 2    None (Ubuntu 8.04 incompatible)
+
+═══════════════════════════════════════════════════════════════════
+CUSTOM WAZUH RULES (local_rules.xml on SRV-SIEM01)
+═══════════════════════════════════════════════════════════════════
+
+  Rule ID   MITRE       Detection
+  ───────   ─────────   ──────────────────────────────────────────
+  100001    T1110       Brute force — 5+ failed logons in 2 min
+  100002    T1110       Brute force success (fails then success)
+  100003    T1136       New Windows user account created
+  100004    T1136       Account added to Administrators group
+  100005    T1027       PowerShell encoded command
+  100006    T1059.001   PowerShell script file executed
+  100007    T1490       Backup file accessed/modified
+  100008    T1053.005   Scheduled task created
+  100009    T1059       Bindshell port 1524 detected (level 15)
+  100010    T1190       vsftpd backdoor — port 6200 connection (level 12)
+
+  Decoder:  pfSense filterlog parent decoder in local_decoder.xml
+            Prematch on "filterlog" — rule-level dstport matching
+
+═══════════════════════════════════════════════════════════════════
+SYSLOG PIPELINE (pfSense → Wazuh)
+═══════════════════════════════════════════════════════════════════
+
+  Source:     SRV-FW01 (10.10.10.1)
+  Target:     SRV-SIEM01 (10.10.10.135) UDP 514
+  Content:    Firewall events (filterlog format)
+
+  pfSense config:
+    Status → System Logs → Settings → Remote Logging
+    Remote log server: 10.10.10.135:514
+    Remote Syslog Contents: Firewall Events only
+
+  pfSense firewall rule (LAN):
+    Allow UDP 10.10.10.1 → 10.10.10.135:514 (pfSense syslog to Wazuh)
+
+  Wazuh manager (/var/ossec/etc/ossec.conf):
+    <remote>
+      <connection>syslog</connection>
+      <port>514</port>
+      <protocol>udp</protocol>
+      <allowed-ips>10.10.10.0/24</allowed-ips>
+    </remote>
+    <logall>yes</logall>
+
+  Archive location:  /var/ossec/logs/archives/archives.log
+  Alert location:    /var/ossec/logs/alerts/alerts.log
+
+═══════════════════════════════════════════════════════════════════
+ATTACK EXERCISES COMPLETED
+═══════════════════════════════════════════════════════════════════
+
+  Phase   Technique   Description                         Outcome
+  ──────  ─────────   ─────────────────────────────────   ────────
+  17      T1046       Nmap -sV -Pn service fingerprint    SUCCESS
+  17      T1059       Netcat bindshell port 1524 → root   SUCCESS
+  17      T1110       Hydra SSH brute force rockyou.txt   SUCCESS
+  18      T1190       vsftpd 2.3.4 backdoor → root        SUCCESS
+  18      T1190       Samba usermap_script → root         SUCCESS
+  19      T1190       vsftpd exploit — pcap captured      SUCCESS
+  19      T1059       Backdoor shell — Wireshark analyzed SUCCESS
+  21      T1190       Rule 100010 fires on port 6200      VALIDATED
+                      (synthetic filterlog injection —
+                      live exploit re-test pending)
+
+═══════════════════════════════════════════════════════════════════
+PACKET CAPTURE
+═══════════════════════════════════════════════════════════════════
+
+  File:       vsftpd_exploit3.pcap
+  Size:       4,558 bytes | 52 packets
+  Captured:   tcpdump on DMZ-VULN01 eth0 (April 1, 2026)
+  Analyzed:   Wireshark on Lenovo
+  Contents:   ARP → FTP handshake → backdoor trigger (USER xi4:))
+              → root shell on port 6200 → session teardown
+  Transfer:   scp (legacy key flags) Dell → USB → Lenovo
+
+═══════════════════════════════════════════════════════════════════
+POWERSHELL SCRIPTS (SRV-DC01 — C:\Scripts\)
+═══════════════════════════════════════════════════════════════════
+
+  Script                  Purpose                         Output
+  ─────────────────────   ─────────────────────────────   ──────────────────
+  AD-HealthCheck.ps1      Services, replication, shares   C:\Lab-Scripts\ CSV
+  Security-Audit.ps1      Locked accounts, Domain Admins  C:\Lab-Scripts\ CSV
+  WazuhAgent-Check.ps1    Agent status across domain      C:\Lab-Scripts\ CSV
+  Backup-Status.ps1       Backup file age + wbadmin       C:\Lab-Scripts\ CSV
+
+═══════════════════════════════════════════════════════════════════
+LAB SCRIPTS (Dell — D:\Lab-Documentation\Scripts\)
+═══════════════════════════════════════════════════════════════════
+
+  Script                  Purpose
+  ─────────────────────   ───────────────────────────────────────────────────
+  SetVMnetIPs.ps1         Sets VMnet10 and VMnet19 static IPs + IPv4 forwarding
+                          Runs at login via Task Scheduler (RunLevel Highest)
+
+═══════════════════════════════════════════════════════════════════
+SSH ACCESS QUICK REFERENCE
+═══════════════════════════════════════════════════════════════════
+
+  From Lenovo/iPad → Dell:
+    ssh sshuser@192.168.0.150
+    Password: Termius2025Attack!
+    Note: PasswordAuthentication enabled in sshd_config
+
+  From Dell → SIEM01:
+    ssh siemadmin@10.10.10.135
+    Password: SIEM2025Lab!
+
+  From Dell → DB01:
+    ssh labadmin@10.10.10.128
+    Password: Lab2025SecureDB!
+
+  From Dell → DMZ-VULN01:
+    scp -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa
+        msfadmin@10.10.30.101:/path C:\dest\
+    Password: msfadmin
+
+═══════════════════════════════════════════════════════════════════
+GITHUB REPOSITORY
+═══════════════════════════════════════════════════════════════════
+
+  Repo:       enterprise-security-home-lab/IT-analyst-home-lab
+  Local:      D:\Lab-Documentation
+  Branch:     master
+  Last push:  April 16, 2026 — Phase 21 custom Wazuh rule 100010
+
+═══════════════════════════════════════════════════════════════════
+HOME LAB NETWORK ARCHITECTURE v13 | Last Updated: April 16, 2026
+═══════════════════════════════════════════════════════════════════

@@ -1,0 +1,35 @@
+=================================================================
+VM: SRV-DB01 (Database Server)
+=================================================================
+
+HARDWARE CONFIGURATION:
+- Memory: 4 GB
+- Processors: 2 cores
+- Hard Disk: 40 GB
+- Network: NAT
+- Location: C:\VMs\Infrastructure\SRV-DB01\
+
+OPERATING SYSTEM:
+- OS: Ubuntu Server 24.04 LTS
+- Hostname: srv-db01
+- IP Address: 192.168.147.128
+- Subnet Mask: 255.255.255.0
+- Gateway: 192.168.147.2
+
+SOFTWARE INSTALLED:
+- MySQL Server 8.0
+- Apache 2.4.58
+- PHP
+- phpMyAdmin
+
+SERVICES:
+- MySQL: Port 3306 (local only)
+- Apache: Port 80
+- SSH: Port 22
+
+NOTES:
+- Rebuilt from corruption on Feb 11, 2026
+- phpMyAdmin: http://192.168.147.128/phpmyadmin
+- Used for CIS 376 coursework
+
+=================================================================
