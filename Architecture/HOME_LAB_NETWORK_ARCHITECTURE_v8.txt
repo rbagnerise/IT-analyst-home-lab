@@ -1,6 +1,6 @@
 ═══════════════════════════════════════════════════════════════════
-HOME LAB — NETWORK ARCHITECTURE v13
-Last Updated: April 16, 2026 | Phase 21 COMPLETE
+HOME LAB — NETWORK ARCHITECTURE v14
+Last Updated: May 4, 2026 | VMnet19 Restored | Phase 22 Unblocked
 ═══════════════════════════════════════════════════════════════════
 
 ═══════════════════════════════════════════════════════════════════
@@ -11,15 +11,20 @@ PHYSICAL SETUP
   Connection:           Hardwired ethernet to Cox gateway
   Dell Ethernet IP:     192.168.0.150 (permanent DHCP reservation)
   Ethernet MAC:         54-BF-64-62-03-39
+  Network Profile:      Private (must remain Private — Public silently blocks
+                        inter-host LAN traffic, including RDP from Lenovo)
   Remote Access:        ssh sshuser@192.168.0.150 from Lenovo laptop
   SSH Password:         Termius2025Attack!
   Auto-Login:           raymond.bagnerise@gmail.com (raymo) via registry
-  Hypervisor:           VMware Workstation Pro 17
+  Hypervisor:           VMware Workstation Pro 17.6.4
   Total VMs:            7
 
   Cox Gateway:          192.168.0.1 (home LAN)
-  Lenovo Laptop:        192.168.0.241 (used for SSH access and Wireshark)
-  MacBook M1 Pro:       192.168.0.163 (Kali via UTM — external attack machine)
+                        Cox Panoramic gateway — wireless client isolation
+                        enforced at firmware level, no UI toggle to disable
+  Lenovo Laptop:        192.168.0.241 (Wi-Fi, used for SSH access and Wireshark)
+  MacBook M1 Pro:       192.168.0.162 (Kali via UTM — bridged on Wi-Fi)
+                        Path to DMZ deprecated as of v14 due to Cox AP isolation
 
 ═══════════════════════════════════════════════════════════════════
 VMWARE VIRTUAL NETWORK ADAPTERS (Dell Host)
@@ -29,9 +34,18 @@ VMWARE VIRTUAL NETWORK ADAPTERS (Dell Host)
   VMnet8  (NAT):        192.168.147.1   — internet access for VMs
   VMnet10 (Host-Only):  10.10.10.2      — Dell host reaches Servers zone
                         Static IP set via SetVMnetIPs.ps1
+  VMnet11 (Host-Only):  10.10.20.2      — Dell host reaches Clients zone
+                        Recreated after VMware Repair install (May 4, 2026)
   VMnet19 (Host-Only):  10.10.30.2      — Dell host reaches DMZ zone
                         Static IP set via SetVMnetIPs.ps1
-                        IPv4 forwarding enabled — routes MacBook Kali traffic to DMZ
+                        IPv4 forwarding enabled
+                        Recreated after VMware Repair install (May 4, 2026)
+
+  Note: VMware Workstation Repair installs are destructive to virtual network
+  configuration. They delete custom VMnets, may create phantom adapters on
+  previously-occupied subnets (observed: phantom VMnet13 on 10.10.30.0/24),
+  and do not update VM-to-VMnet mappings even when the underlying VMnet is
+  removed. Always export Virtual Network Editor config before running Repair.
 
 ═══════════════════════════════════════════════════════════════════
 NETWORK ZONES
@@ -39,9 +53,9 @@ NETWORK ZONES
 
   Zone            Subnet           pfSense Interface   Purpose
   ─────────────   ──────────────   ─────────────────   ──────────────────
-  Servers (LAN)   10.10.10.0/24   LAN                 DC, SIEM, DB
-  Clients (OPT1)  10.10.20.0/24   OPT1                Windows 11 client
-  DMZ (OPT2)      10.10.30.0/24   OPT2                Kali + Metasploitable
+  Servers (LAN)   10.10.10.0/24    LAN  / em1          DC, SIEM, DB
+  Clients (OPT1)  10.10.20.0/24    OPT1 / em2          Windows 11 client
+  DMZ (OPT2)      10.10.30.0/24    OPT2 / em3          Kali + Metasploitable
 
 ═══════════════════════════════════════════════════════════════════
 VM INVENTORY
@@ -58,6 +72,42 @@ VM INVENTORY
   DMZ-VULN01        Metasploitable 2      10.10.30.101    DMZ
 
 ═══════════════════════════════════════════════════════════════════
+ARCHITECTURAL CONSTRAINTS (v14)
+═══════════════════════════════════════════════════════════════════
+
+  Host-to-DMZ Isolation (By Design)
+  ─────────────────────────────────
+  Dell host (10.10.30.2) cannot reach DMZ assets directly. OPT2 firewall
+  rules permit only OPT2-internal flows (Attack → DMZ-VULN01) and explicitly
+  block lateral movement to Servers and Clients. Host's role on VMnet19 is
+  IPv4 forwarding for transit traffic, NOT direct interaction with DMZ VMs.
+  Adding host → DMZ rules would create a privileged pivot path and weaken
+  segmentation. Validate DMZ reachability from ATT-KALI01, never from host.
+
+  MacBook Kali Path Deprecated
+  ─────────────────────────────
+  Cox Panoramic gateway enforces wireless client isolation. Wireless clients
+  (MacBook, Lenovo on Wi-Fi) cannot reach wired clients (Dell on ethernet).
+  Phase 18's MacBook Kali → Dell → DMZ path is unreliable in this network
+  environment. ATT-KALI01 is the canonical attack source for DMZ exploitation
+  testing — routes through pfSense via existing OPT2 rules, depends on no
+  upstream cooperation, models a foothold-already-established attacker.
+
+  Long-term remediation options:
+    1. USB-C ethernet adapters for wireless laptops (partial fix)
+    2. Cox gateway in bridge mode behind owned router (full fix — recommended)
+    3. Call Cox to disable client isolation remotely (unreliable)
+
+  Windows Network Profile Sensitivity
+  ────────────────────────────────────
+  Public profile silently blocks inter-host LAN traffic on Windows 11 even
+  with appropriate firewall rules in place. After any network reconfiguration
+  or VMware Repair, verify both Dell and Lenovo show NetworkCategory: Private
+  with Get-NetConnectionProfile. New VMware host adapters do not get assigned
+  a profile by NLA at all (host-only nets have no internet connectivity), but
+  this does not prevent traffic flow — only the named LAN adapter matters.
+
+═══════════════════════════════════════════════════════════════════
 VMX FILE PATHS
 ═══════════════════════════════════════════════════════════════════
 
@@ -68,6 +118,23 @@ VMX FILE PATHS
   ATT-KALI01:   D:\VMs\Attack\ATT-KALI01\Debian 12.x 64-bit.vmx
   DMZ-VULN01:   D:\VMs\Attack\Metasploitable2-Linux\Metasploitable.vmx
   CLI-WIN11-01: D:\VMs\Clients\CLI-WIN11-01\CLI-WIN11-01.vmx
+
+═══════════════════════════════════════════════════════════════════
+SRV-FW01 ADAPTER MAPPING (verify after any VMware reconfiguration)
+═══════════════════════════════════════════════════════════════════
+
+  Adapter   pfSense   VMnet     Purpose
+  ───────   ───────   ───────   ───────────────────────────
+  1         WAN/em0   VMnet8    NAT to Cox gateway
+  2         LAN/em1   VMnet10   Servers zone
+  3         OPT1/em2  VMnet11   Clients zone
+  4         OPT2/em3  VMnet19   DMZ zone
+
+  Critical: pfSense identifies interfaces by VMware adapter slot order, not
+  by MAC. After VMware Repair installs that delete custom VMnets, the VM
+  config preserves the (now broken) VMnet name on each adapter. Verify all
+  four adapters in VM Settings before powering on pfSense after any host
+  network reconfiguration.
 
 ═══════════════════════════════════════════════════════════════════
 VM AUTO-START SEQUENCE (on Dell reboot)
@@ -91,7 +158,19 @@ VM AUTO-START SEQUENCE (on Dell reboot)
                         Enables VMnet19 IPv4 forwarding
 
 ═══════════════════════════════════════════════════════════════════
-ROUTING — MACBOOK KALI → DMZ (Direct Route)
+ROUTING — ATT-KALI01 → DMZ (Canonical Attack Path as of v14)
+═══════════════════════════════════════════════════════════════════
+
+  ATT-KALI01 (10.10.30.130, DMZ) → pfSense em3/OPT2 (10.10.30.1)
+  → DMZ-VULN01 (10.10.30.101, DMZ)
+
+  Same-subnet path through pfSense OPT2 with allow rule for
+  OPT2 nets → 10.10.30.101. No host transit, no portproxy, no Cox
+  gateway involvement. Validated end-to-end May 4, 2026 (4/4 ping
+  replies, sub-ms latency).
+
+═══════════════════════════════════════════════════════════════════
+ROUTING — MACBOOK KALI → DMZ (Deprecated, Documented for History)
 ═══════════════════════════════════════════════════════════════════
 
   MacBook Kali route (runtime only — re-run after reboot):
@@ -101,6 +180,10 @@ ROUTING — MACBOOK KALI → DMZ (Direct Route)
 
   DMZ-VULN01 return route (persistent via /etc/network/interfaces):
     post-up route add -net 192.168.0.0/24 gw 10.10.30.2
+
+  Status: Path remains technically configured but blocked by Cox AP
+  isolation when MacBook is on Wi-Fi. Reactivate by either putting Cox
+  gateway in bridge mode or connecting MacBook via USB-C ethernet.
 
   SCP from DMZ-VULN01 (run from Dell, not from Metasploitable):
     scp -o HostKeyAlgorithms=+ssh-rsa -o PubkeyAcceptedAlgorithms=+ssh-rsa
@@ -122,6 +205,8 @@ PORT FORWARDS (Dell netsh portproxy — persistent)
   0.0.0.0:8443  → 10.10.10.135:443            Wazuh dashboard (iPad proxy)
   0.0.0.0:8080  → 10.10.10.135:80             Wazuh dashboard HTTP (inactive)
   Note: 139/445 removed — SMB reached via direct routing only
+  Note: Most portproxy rules are legacy from MacBook Kali path. Retained
+        for reference but not in active use as of v14.
 
 ═══════════════════════════════════════════════════════════════════
 FIREWALL RULES (pfSense — Phase 10 + Phase 21 additions)
@@ -142,6 +227,9 @@ FIREWALL RULES (pfSense — Phase 10 + Phase 21 additions)
   LAN         10.10.10.1    10.10.10.135 :514/UDP    PASS    pfSense syslog → Wazuh
   WAN         Any           Any                      BLOCK   Default deny inbound
 
+  Note: No allow rule exists for host (10.10.30.2) → DMZ. This is intentional
+  segmentation. Do not add. See ARCHITECTURAL CONSTRAINTS section.
+
 ═══════════════════════════════════════════════════════════════════
 WAZUH AGENT INVENTORY
 ═══════════════════════════════════════════════════════════════════
@@ -152,7 +240,7 @@ WAZUH AGENT INVENTORY
   002 — CLI-WIN11    10.10.20.134    Windows 11          Active
   003 — SRV-DB01     10.10.10.128    Ubuntu 24.04        Active
   004 — ATT-KALI01   10.10.30.130    Kali Linux          Active
-  005 — MacBook      192.168.0.163   Kali Linux (UTM)    Active (via Dell proxy)
+  005 — MacBook      192.168.0.162   Kali Linux (UTM)    Inactive (Cox AP isolation)
   DMZ-VULN01         10.10.30.101    Metasploitable 2    None (Ubuntu 8.04 incompatible)
 
 ═══════════════════════════════════════════════════════════════════
@@ -220,6 +308,10 @@ ATTACK EXERCISES COMPLETED
                       (synthetic filterlog injection —
                       live exploit re-test pending)
 
+  Note: Phases 17–19 originally executed from MacBook Kali through Dell
+  portproxy/direct routing. As of v14, this attack source is deprecated.
+  Phase 22+ exploitation testing will originate from ATT-KALI01.
+
 ═══════════════════════════════════════════════════════════════════
 PACKET CAPTURE
 ═══════════════════════════════════════════════════════════════════
@@ -260,6 +352,7 @@ SSH ACCESS QUICK REFERENCE
     ssh sshuser@192.168.0.150
     Password: Termius2025Attack!
     Note: PasswordAuthentication enabled in sshd_config
+    Note: Lenovo and Dell must both have NetworkCategory: Private
 
   From Dell → SIEM01:
     ssh siemadmin@10.10.10.135
@@ -281,8 +374,8 @@ GITHUB REPOSITORY
   Repo:       enterprise-security-home-lab/IT-analyst-home-lab
   Local:      D:\Lab-Documentation
   Branch:     master
-  Last push:  April 16, 2026 — Phase 21 custom Wazuh rule 100010
+  Last push:  May 4, 2026 — VMnet19 recovery, v21 master summary, v14 architecture
 
 ═══════════════════════════════════════════════════════════════════
-HOME LAB NETWORK ARCHITECTURE v13 | Last Updated: April 16, 2026
+HOME LAB NETWORK ARCHITECTURE v14 | Last Updated: May 4, 2026
 ═══════════════════════════════════════════════════════════════════

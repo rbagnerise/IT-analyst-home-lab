@@ -1,5 +1,6 @@
-HOME LAB NETWORK DIAGRAM — v15
-April 16, 2026
+HOME LAB NETWORK DIAGRAM — v16
+May 4, 2026  |  VMnet19 Restored | Phase 22 Unblocked
+
 INTERNET
 │
 │ (VMware NAT)
@@ -11,6 +12,13 @@ INTERNET
 │  LAN  (em1) → 10.10.10.1/24           │
 │  OPT1 (em2) → 10.10.20.1/24           │
 │  OPT2 (em3) → 10.10.30.1/24           │
+│                                         │
+│  Adapter Map (verify after VMware       │
+│  reconfiguration):                      │
+│    Adapter 1 → WAN  → VMnet8           │
+│    Adapter 2 → LAN  → VMnet10          │
+│    Adapter 3 → OPT1 → VMnet11          │
+│    Adapter 4 → OPT2 → VMnet19          │
 │                                         │
 │  Syslog → 10.10.10.135:514 UDP        │
 │  (Firewall events → Wazuh — Phase 21) │
@@ -24,7 +32,10 @@ SERVERS        CLIENTS        ATTACK / DMZ
 DELL HOST (HYPERVISOR) — HEADLESS CONFIGURATION ✅
 ══════════════════════════════════════════════════════
 Physical IP  : 192.168.0.150  (permanent DHCP reservation)
+Network Prof : Private (must remain Private — Public silently
+               blocks inter-host LAN traffic, including RDP)
 VMnet10 NIC  : 10.10.10.2     (VMware Network Adapter VMnet10 — static)
+VMnet11 NIC  : 10.10.20.2     (VMware Network Adapter VMnet11 — static)
 VMnet19 NIC  : 10.10.30.2     (VMware Network Adapter VMnet19 — static)
 SSH Access   : ssh sshuser@192.168.0.150  (from Lenovo or any LAN device)
 Auto-Start   : Task Scheduler → StartLabVMs
@@ -36,9 +47,8 @@ Static IPs   : Task Scheduler → SetVMnetIPs (runs at login, RunLevel Highest)
                Also enables VMnet19 IPv4 forwarding on every login (Phase 18)
 VM Scripts   : C:\Scripts\StartLabVMs.ps1
 IP Forwarding: Enabled on Dell Ethernet (IPv4) and VMnet19 (IPv4) — Phase 18
-               Enables direct MacBook Kali → DMZ routing through Dell
                Registry: HKLM\SYSTEM\CurrentControlSet\Services\Tcpip\Parameters\IPEnableRouter=1
-Port Forwards: netsh portproxy (persistent)
+Port Forwards: netsh portproxy (persistent — most legacy from MacBook path)
                0.0.0.0:1514  → 10.10.10.135:1514  (Wazuh agent)
                0.0.0.0:1515  → 10.10.10.135:1515  (Wazuh agent)
                0.0.0.0:8080  → 10.10.30.101:80    (Metasploitable HTTP)
@@ -46,9 +56,35 @@ Port Forwards: netsh portproxy (persistent)
                0.0.0.0:22    → 10.10.30.101:22    (Metasploitable SSH)
                0.0.0.0:1524  → 10.10.30.101:1524  (Metasploitable bindshell)
                0.0.0.0:6200  → 10.10.30.101:6200  (vsftpd backdoor)
-               Note: 139/445 removed — SMB reached via direct routing (Phase 18)
+               Note: 139/445 removed — SMB reached via direct routing
 GitHub Repo  : enterprise-security-home-lab/IT-analyst-home-lab
-               D:\Lab-Documentation → last push April 16, 2026 (Phase 21)
+               D:\Lab-Documentation → last push May 4, 2026
+               (VMnet19 recovery, v21 summary, v14 architecture, v16 diagram)
+══════════════════════════════════════════════════════
+ARCHITECTURAL CONSTRAINTS — v16
+══════════════════════════════════════════════════════
+Host-to-DMZ Isolation (By Design)
+   Dell host (10.10.30.2) cannot reach DMZ assets directly.
+   OPT2 firewall rules permit only OPT2-internal → DMZ-VULN01 and
+   block lateral movement to Servers/Clients. Host's role on VMnet19
+   is IPv4 forwarding only, not DMZ interaction. Validate DMZ
+   reachability from ATT-KALI01, never from the Dell host.
+
+MacBook Kali Path Deprecated
+   Cox Panoramic gateway enforces wireless client isolation with
+   no UI toggle. Wireless clients (MacBook, Lenovo on Wi-Fi) cannot
+   reach wired clients (Dell on ethernet). Phase 18 MacBook → Dell
+   → DMZ path is blocked by ISP behavior the lab cannot control.
+   ATT-KALI01 is now the canonical attack source for DMZ work.
+
+VMware Repair Install Hazard
+   Repair installs are destructive to virtual network configuration.
+   They delete custom VMnets, may create phantom adapters on
+   previously-occupied subnets (observed: phantom VMnet13 on
+   10.10.30.0/24), and do not update VM-to-VMnet mappings even
+   when the underlying VMnet is removed. Always export Virtual
+   Network Editor config before running Repair, and verify all VM
+   adapter slots after.
 ══════════════════════════════════════════════════════
 SERVERS ZONE — VMnet10 (10.10.10.0/24)
 ══════════════════════════════════════════════════════
@@ -104,7 +140,7 @@ CLIENTS ZONE — VMnet11 (10.10.20.0/24)
 ══════════════════════════════════════════════════════
 ATTACK / DMZ ZONE — VMnet19 (10.10.30.0/24)
 ══════════════════════════════════════════════════════
-├─ ATT-KALI01 ✅ → 10.10.30.130
+├─ ATT-KALI01 ✅ → 10.10.30.130  ★ CANONICAL ATTACK SOURCE (v16)
 │  ├─ Kali Linux 2024.4 (lab VM on Dell)
 │  ├─ Tools: Metasploit v6.4, Nmap, Hydra, NetExec, Netcat
 │  ├─ Nessus Essentials 10.11.2 (https://127.0.0.1:8834)
@@ -112,6 +148,8 @@ ATTACK / DMZ ZONE — VMnet19 (10.10.30.0/24)
 │  ├─ Network Adapter 1: VMnet19 (DMZ — eth1 at 10.10.30.130)
 │  ├─ Network Adapter 2: VMnet10 (Servers — for agent reporting)
 │  ├─ Note: SSH service disabled by default — sudo systemctl start ssh
+│  ├─ Validated path: ATT-KALI01 → pfSense em3/OPT2 → DMZ-VULN01
+│  │                  4/4 ping replies, sub-ms latency (May 4, 2026)
 │  └─ → Wazuh Agent 004 → SRV-SIEM01 ● ACTIVE
 │
 └─ DMZ-VULN01 ✅ → 10.10.30.101
@@ -123,13 +161,29 @@ ATTACK / DMZ ZONE — VMnet19 (10.10.30.0/24)
    ├─ Wazuh Agent: None (Ubuntu 8.04 incompatible)
    └─ On-demand only — powered on for attack exercises
 ══════════════════════════════════════════════════════
-EXTERNAL ATTACK MACHINE — MacBook M1 Pro
+EXTERNAL ATTACK MACHINE — MacBook M1 Pro (DEPRECATED v16)
 ══════════════════════════════════════════════════════
-Physical IP  : 192.168.0.163 (home LAN — Kali via UTM)
-Wazuh Agent  : 005 ● ACTIVE (reports via Dell port forward)
+Physical IP  : 192.168.0.162 (home LAN — Kali via UTM, bridged)
+Wazuh Agent  : 005 ● INACTIVE (Cox AP isolation blocks reach to Dell)
 DMZ Route    : sudo ip route add 10.10.30.0/24 via 192.168.0.150
                Runtime only — must be re-run after every reboot
 Path to DMZ  : MacBook Kali → Dell (192.168.0.150) → VMnet19 → DMZ-VULN01
+Status       : Path technically configured but blocked by Cox Panoramic
+               wireless client isolation. Reactivate by either:
+                 1. USB-C ethernet adapter for MacBook (partial)
+                 2. Cox gateway in bridge mode + owned router (full)
+                 3. Calling Cox to disable client isolation (unreliable)
+══════════════════════════════════════════════════════
+HOME NETWORK CONTEXT
+══════════════════════════════════════════════════════
+Cox Gateway  : 192.168.0.1
+               Cox Panoramic Wi-Fi gateway — wireless client isolation
+               enforced at firmware level, no admin UI to disable.
+               Wireless clients cannot reach wired clients on the LAN.
+Lenovo       : 192.168.0.241 (Wi-Fi — Wireshark analysis, RDP to Dell)
+               RDP requires Dell + Lenovo NetworkCategory: Private
+MacBook      : 192.168.0.162 (Wi-Fi — Kali in UTM, bridged)
+               Cannot reach Dell's wired ethernet due to AP isolation
 ══════════════════════════════════════════════════════
 SYSLOG PIPELINE (pfSense → Wazuh) — Phase 21
 ══════════════════════════════════════════════════════
@@ -152,6 +206,10 @@ Phase  18    : Direct routing + T1190 exploits (vsftpd, Samba)
 Phase  19    : Packet capture of vsftpd exploit — Wireshark analysis
 Phase  20    : IR-2026-003 + full documentation push
 Phase  21    : pfSense syslog pipeline + custom rule 100010 (vsftpd port 6200)
+Recovery     : VMnet19 restored after VMware Repair install destruction
+               (May 4, 2026) — phantom VMnet13 removed, VMnet19 rebuilt,
+               pfSense Adapter 4 remapped, end-to-end validated
+Phase  22    : NEXT — Suricata IDS on pfSense OPT2/em3 for DMZ monitoring
 ══════════════════════════════════════════════════════
-HOME LAB NETWORK DIAGRAM v15 | Last Updated: April 16, 2026
+HOME LAB NETWORK DIAGRAM v16 | Last Updated: May 4, 2026
 ══════════════════════════════════════════════════════
